@@ -1,0 +1,152 @@
+const cv=document.getElementById('c');
+const R=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true});
+R.setPixelRatio(Math.min(devicePixelRatio,2));
+const S=new THREE.Scene();
+const cam=new THREE.PerspectiveCamera(40,1,.1,100);
+S.add(new THREE.AmbientLight(0xffffff,.65));
+const dl=new THREE.DirectionalLight(0xffffff,.9);dl.position.set(4,6,8);S.add(dl);
+const dl2=new THREE.PointLight(0x3ddc97,.6,30);dl2.position.set(-5,-2,4);S.add(dl2);
+
+const root=new THREE.Group();S.add(root);
+function rr(w,h,r){const s=new THREE.Shape(),x=-w/2,y=-h/2;
+ s.moveTo(x+r,y);s.lineTo(x+w-r,y);s.quadraticCurveTo(x+w,y,x+w,y+r);s.lineTo(x+w,y+h-r);
+ s.quadraticCurveTo(x+w,y+h,x+w-r,y+h);s.lineTo(x+r,y+h);s.quadraticCurveTo(x,y+h,x,y+h-r);
+ s.lineTo(x,y+r);s.quadraticCurveTo(x,y,x+r,y);return s}
+const M=(c,o={})=>new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.45,metalness:.2},o));
+const parts=[];
+function add(name,mesh,pos,off,label,rot){mesh.position.set(...pos);root.add(mesh);parts.push({name,mesh,base:new THREE.Vector3(...pos),off:new THREE.Vector3(...off),label,rot:rot||0})}
+
+// shells
+const front=new THREE.Mesh(new THREE.ExtrudeGeometry(rr(1.7,3.3,.3),{depth:.3,bevelEnabled:false}),M(0x1b1f26,{roughness:.3}));
+add('front',front,[0,0,0],[-3.4,0,.6],'OLED display + power button',.6);
+const back=new THREE.Mesh(new THREE.ExtrudeGeometry(rr(1.7,3.3,.3),{depth:.3,bevelEnabled:false}),M(0x2a303a));
+add('back',back,[0,0,-.3],[0,0,-1.3],null);
+// front details
+const sc=document.createElement('canvas');sc.width=256;sc.height=384;const sx=sc.getContext('2d');
+const tex=new THREE.CanvasTexture(sc);
+const screen=new THREE.Mesh(new THREE.PlaneGeometry(1.25,1.8),new THREE.MeshBasicMaterial({map:tex}));
+screen.position.set(0,.45,.31);front.add(screen);
+const btn=new THREE.Mesh(new THREE.CylinderGeometry(.25,.25,.08,32),M(0x3a414d));btn.rotation.x=Math.PI/2;btn.position.set(0,-1.2,.33);front.add(btn);
+const led=new THREE.Mesh(new THREE.BoxGeometry(.35,.04,.02),new THREE.MeshBasicMaterial({color:0x3ddc97}));led.position.set(0,1.5,.31);front.add(led);
+// mouthpiece
+const mp=new THREE.Mesh(new THREE.CylinderGeometry(.24,.2,1,32),M(0xcfe8f5,{transparent:true,opacity:.55,roughness:.1}));
+add('mouth',mp,[0,2.1,0],[0,.8,0],'Mouthpiece (breath input)');
+// internals
+add('chamber',new THREE.Mesh(new THREE.BoxGeometry(.9,.7,.4),M(0x9aa5b1,{metalness:.5})),[0,1.15,-.05],[0,.2,.9],'Sensor chamber');
+const fc=new THREE.Mesh(new THREE.CylinderGeometry(.3,.3,.12,40),M(0xd4a62a,{metalness:.8,roughness:.25}));fc.rotation.x=Math.PI/2;
+const fcg=new THREE.Group();fcg.add(fc);add('fuel',fcg,[0,.5,-.02],[0,.1,1.5],'Fuel-cell alcohol sensor');
+const sg=new THREE.Group();[-.4,0,.4].forEach(x=>{const c=new THREE.Mesh(new THREE.CylinderGeometry(.12,.12,.1,24),M(0xe9edf2,{metalness:.6}));c.rotation.x=Math.PI/2;c.position.x=x;sg.add(c)});
+add('sens',sg,[0,.02,.0],[0,0,2.1],'Electrochemical sensors (THC · cocaine · amphetamine · opioids)');
+const pcb=new THREE.Mesh(new THREE.BoxGeometry(1.35,1.1,.06),M(0x0f6b3a,{roughness:.6}));
+const esp=new THREE.Mesh(new THREE.BoxGeometry(.55,.55,.06),M(0xb8bec6,{metalness:.8,roughness:.3}));esp.position.set(0,-.2,.06);pcb.add(esp);
+add('pcb',pcb,[0,-.35,-.1],[0,-.2,.35],'ESP32 module (processing + connectivity)');
+add('batt',new THREE.Mesh(new THREE.BoxGeometry(1.2,.55,.25),M(0x2b6fd6)),[0,-1.2,-.05],[0,-.4,.9],'Rechargeable battery');
+add('usb',new THREE.Mesh(new THREE.BoxGeometry(.3,.08,.12),M(0x777f8b)),[0,-1.62,.15],[0,-.5,.2],'USB-C port');
+
+// breath particles
+const N=140,pp=new Float32Array(N*3);for(let i=0;i<N;i++)rp(i,Math.random()*3);
+function rp(i,y){pp[i*3]=(Math.random()-.5)*.35;pp[i*3+1]=1.7+y;pp[i*3+2]=(Math.random()-.5)*.35}
+const pg=new THREE.BufferGeometry();pg.setAttribute('position',new THREE.BufferAttribute(pp,3));
+const pts=new THREE.Points(pg,new THREE.PointsMaterial({color:0x7fd4ff,size:.07,transparent:true,opacity:.9}));pts.visible=false;root.add(pts);
+
+// labels
+const lbs=parts.filter(p=>p.label).map(p=>{const d=document.createElement('div');d.className='lb';d.textContent=p.label;document.body.appendChild(d);return{p,d}});
+
+// screen drawing
+function draw(mode){
+ sx.fillStyle='#05080c';sx.fillRect(0,0,256,384);
+ sx.fillStyle='#8b98a8';sx.font='14px sans-serif';sx.fillText('12:45',14,24);
+ let head='Ready',col='#e8edf3';
+ if(mode==1){head='Blow steadily…';col='#7fd4ff'}
+ if(mode==2){head='Analyzing…';col='#ffd166'}
+ if(mode==3){head='No Drugs Detected';col='#3ddc97'}
+ sx.fillStyle=col;sx.font='bold 21px sans-serif';sx.textAlign='center';sx.fillText(head,128,70);sx.textAlign='left';
+ const rows=[['Alcohol',mode==3?'0.00 mg/L':'—'],['THC',mode==3?'Not Detected':'—'],['Cocaine',mode==3?'Not Detected':'—'],['Amphetamine',mode==3?'Not Detected':'—'],['Opioids',mode==3?'Not Detected':'—']];
+ rows.forEach((r,i)=>{const y=125+i*50;sx.fillStyle='#10161e';sx.fillRect(10,y-22,236,40);
+  sx.fillStyle=mode==3?'#3ddc97':(mode==2?'#ffd166':'#4a5565');sx.beginPath();sx.arc(26,y-2,6,0,7);sx.fill();
+  sx.fillStyle='#e8edf3';sx.font='15px sans-serif';sx.fillText(r[0],42,y+3);sx.fillStyle='#8b98a8';sx.font='13px sans-serif';sx.textAlign='right';sx.fillText(r[1],238,y+3);sx.textAlign='left'});
+ tex.needsUpdate=true}
+
+// stages
+const FL=['Breath','Chamber','Sensors','Potentiostat','ADC','ESP32','Feature extraction','Random Forest','Result'];
+const fl=document.getElementById('flow');FL.forEach(n=>{const e=document.createElement('span');e.textContent=n;fl.appendChild(e)});
+const ST=[
+ {t:'AI Breath Analyzer',s:'Portable · non-invasive · dual alcohol & drug screening',ex:0,scr:0,f:[],
+  n:'Meet the AI Breath Analyzer, built by Team Squad SALS from Sir C R Reddy College of Engineering, Eluru. A portable, non-invasive device that screens for alcohol and multiple drugs from a single breath sample.'},
+ {t:'The problem',s:'Impaired driving and slow, invasive testing',ex:0,scr:0,f:[],
+  n:'Alcohol and drug impaired driving is a major road safety concern. In 2023, India reported 2,690 accidents and 1,442 deaths in selected highway categories linked to alcohol and drugs. Current drug tests need urine, saliva, blood, or a laboratory. We need something rapid and portable.'},
+ {t:'Inside the device',s:'Reusable electronics + replaceable sensor cartridge',ex:1,scr:0,f:[],
+  n:'Inside, reusable electronics work together with a replaceable sensor cartridge. Let us look at each key component, and how a breath sample becomes a result.'},
+ {t:'1 · Mouthpiece & sensor chamber',s:'Breath sample input and flow path',ex:1,scr:0,f:[0,1],focus:['mouth','chamber'],
+  n:'First, the mouthpiece. The user blows steadily, and the breath travels along a flow path into the sensor chamber, which holds all the sensors in one controlled space.'},
+ {t:'2 · Fuel-cell alcohol sensor',s:'Ethanol detection',ex:1,scr:0,f:[2],focus:['fuel'],
+  n:'The fuel cell alcohol sensor reacts with ethanol in the breath and produces a current that grows with alcohol concentration. The result is reported in milligrams per litre.'},
+ {t:'3 · Electrochemical sensor array',s:'THC · cocaine · amphetamine · opioids',ex:1,scr:0,f:[2],focus:['sens'],
+  n:'Next, the electrochemical sensor array. Modified electrodes, each with a working, reference and counter electrode, respond to target drugs such as THC, cocaine, amphetamine and opioids. They sit on a replaceable cartridge, so only the sensing part is swapped.'},
+ {t:'4 · ESP32 + Random Forest AI',s:'Signal acquisition, feature extraction, classification',ex:1,scr:0,f:[3,4,5,6,7],focus:['pcb'],
+  n:'A potentiostat drives the electrodes and measures tiny currents. An A D C digitizes them, and the ESP32 extracts features such as peak current, peak potential, response and recovery time, temperature, humidity and breath flow. A Random Forest model then classifies the pattern as alcohol, a drug, or negative.'},
+ {t:'5 · Display, power & connectivity',s:'OLED · battery · USB-C · mobile app',ex:1,scr:0,f:[8],focus:['batt','usb','front'],
+  n:'A rechargeable battery powers everything, and the USB C port handles charging and data. Results appear on the OLED display, and can also be sent to a mobile app through the ESP32 wireless connectivity.'},
+ {t:'Live breath test',s:'Breath → sensors → AI → result',ex:0,scr:1,f:'seq',
+  n:'Now the full test. The user blows into the mouthpiece. The sensors respond, the signals are processed, and the model classifies the result within moments.'},
+ {t:'Result',s:'Preliminary screening only',ex:0,scr:3,f:[8],
+  n:'The screen shows alcohol zero point zero zero milligrams per litre, and no drugs detected. Remember, this is for preliminary screening only. Positive or uncertain results must be confirmed in a laboratory.'},
+ {t:'Smarter Screening · Safer Communities',s:'Rapid, portable, low-cost on-site screening',ex:0,scr:0,f:[],
+  n:'The AI Breath Analyzer brings rapid, low-cost, on-site screening to the roadside. Smarter screening, safer communities. Thank you.'}];
+let st=0,auto=false,el=0,ex=0,exT=0,drag=0,ry=0.4,voice=false,tok=0,sub=0,focus=null;
+const cc=document.getElementById('cc'),bar=document.getElementById('bar');
+function mk(t,f){const b=document.createElement('button');b.textContent=t;b.onclick=f;bar.appendChild(b);return b}
+mk('⏮',()=>go((st+10)%11));
+const pb=mk('⏸ Pause',()=>{auto=!auto;pb.textContent=auto?'⏸ Pause':'▶ Play';if(voice){auto?speechSynthesis.resume():speechSynthesis.pause()}});
+mk('⏭',()=>go((st+1)%11));
+const vb=mk('🔊 Voice on',()=>{voice=!voice;vb.textContent=voice?'🔊 Voice on':'🔇 Voice off';if(voice)go(st);else speechSynthesis.cancel()});
+const KN=[["Portable, non-invasive breath screening", "Detects alcohol + multiple drugs", "Team Squad SALS · Sir C.R. Reddy College of Engineering, Eluru"], ["India 2023: 2,690 accidents &amp; 1,442 deaths (selected highways)", "Today: urine, saliva, blood or lab tests", "Need: rapid, portable, breath-based screening"], ["Reusable electronics: ESP32 + potentiostat", "Replaceable sensor cartridge", "Flow: Breath → Sensors → AI → Result"], ["Mouthpiece = breath sample input", "Chamber holds the sensors in a controlled flow path"], ["Fuel-cell sensor reacts with ethanol", "Current rises with alcohol concentration", "Output shown in mg/L"], ["Targets: THC, cocaine, amphetamine, opioids", "3 electrodes: working, reference, counter", "Replaceable cartridge"], ["Potentiostat measures current; ADC digitizes it", "Features: peak current/potential, response &amp; recovery time, temperature, humidity, flow", "Random Forest → Alcohol / Drug / Negative"], ["Rechargeable battery", "USB-C: charging &amp; data", "OLED display + mobile app via ESP32"], ["Blow → sensors respond → AI classifies", "Result in real time"], ["Alcohol 0.00 mg/L · No drugs detected", "Preliminary screening only: confirm positives in a lab"], ["Rapid · low-cost · on-site screening", "Smarter Screening | Safer Communities"]];
+let selVoice=null,rate=.95,pitch=1;
+function mkSel(t,opts,f){const e=document.createElement('select');e.title=t;opts.forEach(o=>e.add(new Option(o[0],o[1])));e.onchange=()=>{f(e.value);if(voice)go(st)};bar.appendChild(e);return e}
+const vsel=mkSel('AI voice',[],i=>{selVoice=vsel._l[i]});
+mkSel('Speed',[['Speed: Slow',.8],['Speed: Normal',.95],['Speed: Fast',1.15]],v=>rate=+v).value=.95;
+mkSel('Pitch',[['Pitch: Deep',.7],['Pitch: Normal',1],['Pitch: High',1.3]],v=>pitch=+v).value=1;
+function fv(){try{const vs=speechSynthesis.getVoices();if(!vs.length)return;const en=vs.filter(v=>v.lang.startsWith('en'));const l=en.length?en:vs;
+ const keep=selVoice?l.findIndex(v=>v.name==selVoice.name):-1;let idx=keep>=0?keep:l.findIndex(v=>v.lang=='en-IN');if(idx<0)idx=0;
+ vsel._l=l;vsel.innerHTML='';l.forEach((v,i)=>vsel.add(new Option('Voice: '+v.name+' ('+v.lang+')',i)));vsel.value=idx;selVoice=l[idx]}catch(e){}}
+try{speechSynthesis.onvoiceschanged=fv}catch(e){}fv();
+const dur=i=>Math.max(8,ST[i].n.split(' ').length*.45);
+function speak(txt,cb){try{speechSynthesis.cancel();setTimeout(()=>{const u=new SpeechSynthesisUtterance(txt);
+ u.voice=selVoice;u.rate=rate;u.pitch=pitch;u.onend=cb;speechSynthesis.speak(u)},80)}catch(e){}}
+function go(i){st=i;el=0;exT=ST[i].ex;const k=++tok;focus=ST[i].focus||null;
+ document.getElementById('t').textContent=ST[i].t;document.getElementById('s').textContent=ST[i].s;cc.style.animation='none';void cc.offsetWidth;cc.style.animation='';cc.innerHTML='<b>Key notes</b><ul>'+KN[i].map(x=>'<li>'+x+'</li>').join('')+'</ul>';
+ draw(ST[i].scr);pts.visible=i==8;
+ if(voice)speak(ST[i].n,()=>{if(k==tok&&auto)setTimeout(()=>{if(k==tok&&auto)go((st+1)%11)},700)})}
+function start(v){voice=v;vb.textContent=v?'🔊 Voice on':'🔇 Voice off';auto=true;document.getElementById('ov').remove();go(0)}
+document.getElementById('pv').onclick=()=>start(true);document.getElementById('ps').onclick=()=>start(false);
+go(0);
+
+function setO(m,o){m.traverse(n=>{if(n.material){const q=n.material;if(q.userData.bo===undefined)q.userData.bo=q.opacity;q.transparent=true;q.opacity=q.userData.bo*o}})}
+
+cv.addEventListener('pointerdown',e=>{drag=e.clientX;cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(drag){ry+=(e.clientX-drag)*.01;drag=e.clientX}});
+cv.addEventListener('pointerup',()=>drag=0);
+
+function resize(){const w=innerWidth,h=innerHeight;R.setSize(w,h,false);cam.aspect=w/h;
+ const d=w/h<.8?18:(w/h<1.3?12:9.5);cam.position.set(0,.3,d);cam.lookAt(0,.2,0);cam.updateProjectionMatrix();if(w/h>1.3&&w>760)root.position.set(-1.4,0,0);else root.position.set(0,-.9,0)}
+addEventListener('resize',resize);resize();
+
+const v=new THREE.Vector3();let last=performance.now();
+function loop(now){requestAnimationFrame(loop);const dt=Math.min((now-last)/1000,.05);last=now;
+ if(auto)el+=dt;
+ if(auto&&el>dur(st)*(voice?2:1)+2)go((st+1)%11);
+ if(st==8){const m=el<5?1:2;if(m!=sub){sub=m;draw(m)}}else sub=0;
+ const fa=ST[st].f==='seq'?FL.map((_,i)=>i<=Math.floor(el/1.6)):FL.map((_,i)=>ST[st].f.includes(i));
+ [...fl.children].forEach((e,i)=>e.classList.toggle('a',fa[i]));
+ ex+=(exT-ex)*Math.min(1,dt*3);
+ const exp=exT>0;if(!drag&&!exp)ry+=dt*.5;
+ const target=exp?-.45:ry;
+ root.rotation.y+=(target-root.rotation.y)*Math.min(1,dt*(exp?3:8));
+ parts.forEach(p=>{p.mesh.position.copy(p.base).addScaledVector(p.off,ex);const to=(focus&&!focus.includes(p.name))?.15:1;p.o=(p.o===undefined?1:p.o)+(to-(p.o===undefined?1:p.o))*Math.min(1,dt*5);setO(p.mesh,p.o);if(p.rot)p.mesh.rotation.y=p.rot*ex});
+ if(pts.visible){for(let i=0;i<N;i++){pp[i*3+1]-=dt*(1.4+(i%5)*.2);if(pp[i*3+1]<1.0)rp(i,1.8)}pg.attributes.position.needsUpdate=true}
+ led.material.color.set(st==8&&sub==2?0xffd166:0x3ddc97);
+ lbs.forEach(l=>{l.p.mesh.getWorldPosition(v);v.project(cam);
+  l.d.style.left=((v.x*.5+.5)*innerWidth)+'px';l.d.style.top=((-v.y*.5+.5)*innerHeight)+'px';
+  l.d.style.opacity=(ex>.9&&(!focus||focus.includes(l.p.name)))?1:0});
+ R.render(S,cam)}
+requestAnimationFrame(loop);

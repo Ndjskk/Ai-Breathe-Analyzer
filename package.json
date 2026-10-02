@@ -1,0 +1,8 @@
+{
+  "name": "ai-breath-analyzer-3d",
+  "version": "1.0.0",
+  "description": "3D animated showcase with voice-over for the AI-based dual alcohol & multi-drug breath analyzer (Team Squad SALS)",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "license": "MIT"
+}
